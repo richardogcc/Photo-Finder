@@ -11,6 +11,7 @@ import multiprocessing as mp
 import sys
 import time
 from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 from typing import Optional
@@ -22,6 +23,7 @@ from .hasher import (
     collect_image_paths,
     compute_hash,
 )
+from .cache import HashCache
 
 
 def _compute_hash_worker(
@@ -41,10 +43,19 @@ class SearchConfig:
     threshold: float = 90.0       # minimum similarity %
     max_workers: int = 0          # 0 = auto (number of CPUs)
     show_progress: bool = True
+    use_cache: bool = True
+    cache_db_path: Optional[Path] = None
+    size_tolerance_pct: Optional[float] = 50.0  # percent; None to disable
+    batch_size: int = 500
+    io_workers: int = 16
 
     def __post_init__(self):
         if self.max_workers <= 0:
             self.max_workers = mp.cpu_count() or 4
+        if self.batch_size <= 0:
+            self.batch_size = 500
+        if self.io_workers <= 0:
+            self.io_workers = 16
 
 
 @dataclass
@@ -82,6 +93,15 @@ def _print_progress(current: int, total: int, prefix: str = ""):
     sys.stdout.flush()
     if current >= total:
         sys.stdout.write("\n")
+
+
+def _chunked(items: list[Path], size: int) -> list[list[Path]]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def _stat_path(path: Path) -> tuple[Path, int, float]:
+    st = path.stat()
+    return path, st.st_size, st.st_mtime
 
 
 def search(
@@ -126,6 +146,8 @@ def search(
     # 2. Collect all images from directory
     print(f"\n📂 Scanning directory: {search_directory}")
     candidates = collect_image_paths(search_directory)
+    # Exclude reference image early
+    candidates = [p for p in candidates if p.resolve() != reference_image.resolve()]
     stats.total_files = len(candidates)
     print(f"   {stats.total_files} images found")
 
@@ -133,8 +155,49 @@ def search(
         stats.elapsed_seconds = time.monotonic() - t_start
         return [], stats
 
-    # 3. Compute hashes in parallel
+    # 3. Prepare cache
+    cache: Optional[HashCache] = None
+    if config.use_cache:
+        db_path = config.cache_db_path or (search_directory / ".photo_finder_cache.sqlite3")
+        cache = HashCache(db_path)
+
+    # 4. Collect file stats asynchronously (I/O bound)
     print(f"\n⚙️  Processing with {config.max_workers} workers...\n")
+    stats_map: dict[Path, tuple[int, float]] = {}
+    if candidates:
+        with ThreadPoolExecutor(max_workers=config.io_workers) as executor:
+            for path, size, mtime in executor.map(_stat_path, candidates):
+                stats_map[path] = (size, mtime)
+
+    # 5. Optional size pre-filter (based on reference file size)
+    ref_size = reference_image.stat().st_size
+    if config.size_tolerance_pct is not None:
+        tol = max(0.0, config.size_tolerance_pct) / 100.0
+        min_size = int(ref_size * (1.0 - tol))
+        max_size = int(ref_size * (1.0 + tol))
+        candidates = [p for p in candidates if min_size <= stats_map.get(p, (0, 0))[0] <= max_size]
+        stats.total_files = len(candidates)
+        print(f"   Size filter: {min_size}–{max_size} bytes | {len(candidates)} candidates")
+
+    # 6. Resolve cached hashes
+    cached_results: dict[Path, ImageHashResult] = {}
+    missing: list[Path] = candidates
+    if cache and candidates:
+        cached = cache.get_cached(candidates, config.algorithm, config.hash_size)
+        cached_results = {}
+        missing = []
+        for path in candidates:
+            cache_entry = cached.get(path)
+            if cache_entry is None:
+                missing.append(path)
+                continue
+            size, mtime = stats_map.get(path, (None, None))
+            if size == cache_entry.size and mtime == cache_entry.mtime:
+                cached_results[path] = HashCache.to_result(cache_entry)
+            else:
+                missing.append(path)
+
+    # 7. Compute missing hashes in parallel (batching)
     worker_fn = partial(
         _compute_hash_worker,
         algorithm=config.algorithm,
@@ -142,23 +205,32 @@ def search(
     )
 
     results: list[Optional[ImageHashResult]] = []
-    with mp.Pool(processes=config.max_workers) as pool:
-        for i, result in enumerate(pool.imap_unordered(worker_fn, candidates), 1):
-            results.append(result)
-            if config.show_progress:
-                _print_progress(i, stats.total_files, "   Hashing")
+    total_to_hash = len(missing)
+    if total_to_hash > 0:
+        with mp.Pool(processes=config.max_workers) as pool:
+            processed = 0
+            for chunk in _chunked(missing, config.batch_size):
+                chunk_results: list[ImageHashResult] = []
+                for result in pool.imap_unordered(worker_fn, chunk):
+                    results.append(result)
+                    if result is not None:
+                        chunk_results.append(result)
+                    processed += 1
+                    if config.show_progress:
+                        _print_progress(processed, total_to_hash, "   Hashing")
+                if cache and chunk_results:
+                    cache.upsert_many(chunk_results)
 
-    # 4. Filter by similarity threshold
+    # Merge cached results
+    results.extend(cached_results.values())
+
+    # 8. Filter by similarity threshold
     matches: list[MatchResult] = []
     for res in results:
         if res is None:
             stats.images_failed += 1
             continue
         stats.images_scanned += 1
-
-        # Skip self-comparison
-        if res.path.resolve() == reference_image.resolve():
-            continue
 
         similarity = ref_hash.similarity_pct(res)
         if similarity >= config.threshold:
@@ -174,5 +246,8 @@ def search(
     matches.sort(key=lambda m: m.similarity_pct, reverse=True)
     stats.matches_found = len(matches)
     stats.elapsed_seconds = time.monotonic() - t_start
+
+    if cache:
+        cache.close()
 
     return matches, stats

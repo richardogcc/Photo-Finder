@@ -27,3 +27,9 @@ Thumbs.db
 # Test images
 test_images/
 test_real/
+
+# Cache
+.photo_finder_cache.sqlite3
+
+# Tests
+.pytest_cache/

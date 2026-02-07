@@ -48,9 +48,16 @@ python -m photo_finder photo.jpg ~/Pictures -a perceptual -t 85 -w 8
 |--------|-------------|---------|
 | `-a`, `--algorithm` | Hash algorithm (`average`, `perceptual`, `difference`, `wavelet`) | `perceptual` |
 | `-t`, `--threshold` | Minimum similarity % (0-100) | `90` |
+| `--size-tolerance` | Prefilter by file size tolerance % | `50` |
+| `--no-size-filter` | Disable size prefilter | `false` |
 | `--hash-size` | Hash size (larger = more precise, slower) | `16` |
+| `--batch-size` | Batch size for hashing tasks | `500` |
 | `-w`, `--workers` | Number of parallel processes (0 = auto) | `0` (auto) |
+| `--io-workers` | Number of I/O worker threads | `16` |
+| `--cache-db` | Path to SQLite cache DB | `.photo_finder_cache.sqlite3` |
+| `--no-cache` | Disable SQLite hash cache | `false` |
 | `--no-progress` | Disable progress bar | `false` |
+| `--json` | Output results as JSON | `false` |
 
 ### Available algorithms
 
@@ -60,6 +67,16 @@ python -m photo_finder photo.jpg ~/Pictures -a perceptual -t 85 -w 8
 | `perceptual` | ⚡⚡ | ⭐⭐⭐ | General use (recommended) |
 | `difference` | ⚡⚡⚡ | ⭐⭐ | Gradient detection |
 | `wavelet` | ⚡ | ⭐⭐⭐ | Complex transformations |
+
+## Cache & performance
+
+By default, Photo Finder stores hashes in a **SQLite cache** so repeated scans
+of the same directory are much faster. The cache is automatically invalidated
+when the file size or modification time changes.
+
+You can also enable a **size prefilter** to reduce the number of files that need
+hashing. This is controlled by `--size-tolerance` (percentage around the
+reference image file size).
 
 ## Example output
 
@@ -113,4 +130,17 @@ photo_finder/
 ├── __main__.py     # CLI (entry point)
 ├── hasher.py       # Perceptual hashing and image utilities
 └── engine.py       # Parallel search engine
+```
+
+## Tests + benchmarks
+
+```bash
+# Install dev dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest
+
+# Run a quick benchmark
+python benchmarks/benchmark_search.py <reference_image> <search_directory>
 ```
