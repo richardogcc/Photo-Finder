@@ -21,6 +21,9 @@ that are:
 # Clone or download the project
 cd "Photo Finder"
 
+# Install system dependency (macOS)
+brew install libvips
+
 # Create a virtual environment (recommended)
 python3 -m venv .venv
 source .venv/bin/activate
@@ -70,9 +73,10 @@ python -m photo_finder photo.jpg ~/Pictures -a perceptual -t 85 -w 8
 
 ## Cache & performance
 
-By default, Photo Finder stores hashes in a **SQLite cache** so repeated scans
-of the same directory are much faster. The cache is automatically invalidated
-when the file size or modification time changes.
+By default, Photo Finder stores hashes in a **SQLite cache** at the project
+root (`.photo_finder_cache.sqlite3`) so repeated scans are much faster. The
+cache is automatically invalidated when the file size or modification time
+changes.
 
 You can also enable a **size prefilter** to reduce the number of files that need
 hashing. This is controlled by `--size-tolerance` (percentage around the

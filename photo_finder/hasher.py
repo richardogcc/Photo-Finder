@@ -14,7 +14,13 @@ from pathlib import Path
 from typing import Optional
 
 import imagehash
+import numpy as np
 from PIL import Image
+
+try:
+    import pyvips  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    pyvips = None
 
 # Supported image extensions
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({
@@ -106,16 +112,15 @@ def compute_hash(
         ImageHashResult or None if the image cannot be processed.
     """
     try:
-        with Image.open(image_path) as img:
-            img = img.convert("RGB")
-            hash_fn = _HASH_FUNCTIONS[algorithm]
-            h = hash_fn(img, hash_size=hash_size)
-            return ImageHashResult(
-                path=image_path,
-                hash_value=h,
-                algorithm=algorithm,
-                file_size=image_path.stat().st_size,
-            )
+        img = _load_image(image_path)
+        hash_fn = _HASH_FUNCTIONS[algorithm]
+        h = hash_fn(img, hash_size=hash_size)
+        return ImageHashResult(
+            path=image_path,
+            hash_value=h,
+            algorithm=algorithm,
+            file_size=image_path.stat().st_size,
+        )
     except Exception:
         return None
 
@@ -135,3 +140,19 @@ def collect_image_paths(directory: Path) -> list[Path]:
             if is_image_file(fpath):
                 paths.append(fpath)
     return paths
+
+
+def _load_image(image_path: Path) -> Image.Image:
+    """Load image using libvips if available, otherwise PIL."""
+    if pyvips is not None:
+        vimg = pyvips.Image.new_from_file(str(image_path), access="sequential")
+        if vimg.bands > 3:
+            vimg = vimg[:3]
+        if vimg.bands == 1:
+            vimg = vimg.colourspace("srgb")
+        mem = vimg.write_to_memory()
+        arr = np.frombuffer(mem, dtype=np.uint8).reshape(vimg.height, vimg.width, vimg.bands)
+        return Image.fromarray(arr, mode="RGB")
+
+    with Image.open(image_path) as img:
+        return img.convert("RGB")

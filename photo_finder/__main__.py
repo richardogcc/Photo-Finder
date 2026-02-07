@@ -108,7 +108,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         metavar="PATH",
-        help="Path to SQLite cache database (default: .photo_finder_cache.sqlite3 in search dir).",
+        help="Path to SQLite cache database (default: .photo_finder_cache.sqlite3 in project root).",
     )
     parser.add_argument(
         "--no-cache",

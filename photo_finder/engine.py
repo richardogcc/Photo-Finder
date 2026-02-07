@@ -158,7 +158,8 @@ def search(
     # 3. Prepare cache
     cache: Optional[HashCache] = None
     if config.use_cache:
-        db_path = config.cache_db_path or (search_directory / ".photo_finder_cache.sqlite3")
+        default_db = Path(__file__).resolve().parent.parent / ".photo_finder_cache.sqlite3"
+        db_path = config.cache_db_path or default_db
         cache = HashCache(db_path)
 
     # 4. Collect file stats asynchronously (I/O bound)
