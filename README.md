@@ -104,7 +104,7 @@ reference image file size).
 
 You can use presets to avoid long CLI commands:
 
-- `no-shortcuts`: skips reading cache & directory index (forces full rescan), but still **writes** results to cache for future runs
+- `no-shortcuts`: skips reading cache & directory index (forces full rescan), but still **writes** results to cache for future runs. No size prefilter.
 - `medium`: defaults
 - `thorough`: cache + directory index, no size prefilter
 

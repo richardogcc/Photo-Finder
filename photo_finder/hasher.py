@@ -11,7 +11,10 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import imagehash
 import numpy as np
@@ -162,8 +165,19 @@ def is_image_file(path: Path) -> bool:
     return path.suffix.lower() in IMAGE_EXTENSIONS
 
 
-def collect_image_paths(directory: Path) -> list[Path]:
-    """Recursively collect all image paths in a directory."""
+def collect_image_paths(
+    directory: Path,
+    *,
+    on_progress: Optional["Callable[[int], None]"] = None,
+) -> list[Path]:
+    """Recursively collect all image paths in a directory.
+
+    Args:
+        directory: Root directory to scan.
+        on_progress: Optional callback invoked with the running count of
+            images found so far.  Useful for showing a live counter on
+            slow filesystems (e.g. network volumes).
+    """
     paths: list[Path] = []
     for root, _dirs, files in os.walk(directory):
         root_path = Path(root)
@@ -171,6 +185,8 @@ def collect_image_paths(directory: Path) -> list[Path]:
             fpath = root_path / fname
             if is_image_file(fpath):
                 paths.append(fpath)
+        if on_progress is not None:
+            on_progress(len(paths))
     return paths
 
 

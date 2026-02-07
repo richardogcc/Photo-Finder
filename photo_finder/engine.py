@@ -174,17 +174,28 @@ def search(
         db_path = config.cache_db_path or default_db
         cache = HashCache(db_path)
 
+    def _scan_progress(count: int) -> None:
+        """Live counter while scanning directories."""
+        if verbose:
+            sys.stdout.write(f"\r   Scanning… {count} images found")
+            sys.stdout.flush()
+
     candidates: list[Path]
     if cache and config.use_cache and config.use_dir_index and not config.refresh_dir_index:
         cached_index = cache.get_index(search_directory)
         if cached_index is not None:
             candidates = cached_index
+            _log(f"   ♻️  {len(candidates)} images (from directory index cache)")
         else:
-            candidates = collect_image_paths(search_directory)
+            candidates = collect_image_paths(search_directory, on_progress=_scan_progress)
+            if verbose:
+                sys.stdout.write("\n")  # newline after live counter
             if config.write_cache:
                 cache.replace_index(search_directory, candidates)
     else:
-        candidates = collect_image_paths(search_directory)
+        candidates = collect_image_paths(search_directory, on_progress=_scan_progress)
+        if verbose:
+            sys.stdout.write("\n")  # newline after live counter
         if cache and config.write_cache and config.use_dir_index:
             cache.replace_index(search_directory, candidates)
 
@@ -206,9 +217,14 @@ def search(
     _log(f"\n⚙️  Processing with {config.max_workers} workers...\n")
     stats_map: dict[Path, tuple[int, float]] = {}
     if candidates:
+        stat_total = len(candidates)
+        stat_done = 0
         with ThreadPoolExecutor(max_workers=config.io_workers) as executor:
             for path, size, mtime in executor.map(_stat_path, candidates):
                 stats_map[path] = (size, mtime)
+                stat_done += 1
+                if config.show_progress:
+                    _print_progress(stat_done, stat_total, "   File stats")
 
     # 4. Optional size pre-filter (based on reference file size)
     ref_size = reference_image.stat().st_size

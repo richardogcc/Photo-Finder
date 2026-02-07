@@ -175,7 +175,7 @@ def _apply_preset(name: str | None) -> dict[str, Any]:
         return {
             "use_cache": False,
             "write_cache": True,
-            "use_dir_index": False,
+            "use_dir_index": True,
             "size_tolerance_pct": None,
         }
     if key == "thorough":
