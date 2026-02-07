@@ -257,6 +257,10 @@ def search(
     results: list[Optional[ImageHashResult]] = []
     total_to_hash = len(worker_args)
     if total_to_hash > 0:
+        if cached_results:
+            _log(f"   ♻️  {len(cached_results)} cached | {total_to_hash} to hash")
+        else:
+            _log(f"   {total_to_hash} images to hash")
         # Ignore SIGINT in workers so the parent can handle Ctrl+C (#14)
         original_sigint = signal.getsignal(signal.SIGINT)
         try:
@@ -281,6 +285,9 @@ def search(
             _log("\n\n⚠️  Interrupted – partial results will be returned.")
         finally:
             signal.signal(signal.SIGINT, original_sigint)
+    else:
+        if cached_results:
+            _log(f"   ♻️  All {len(cached_results)} hashes loaded from cache")
 
     # Merge cached results
     results.extend(cached_results.values())
