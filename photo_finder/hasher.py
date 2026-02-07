@@ -22,10 +22,21 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     pyvips = None
 
-# Supported image extensions
+__all__ = [
+    "IMAGE_EXTENSIONS",
+    "HashAlgorithm",
+    "ImageHashResult",
+    "MatchResult",
+    "compute_hash",
+    "is_image_file",
+    "collect_image_paths",
+]
+
+# Supported image extensions (SVG excluded: vector format not suitable for
+# perceptual hashing)
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({
     ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif",
-    ".webp", ".heic", ".heif", ".avif", ".ico", ".svg",
+    ".webp", ".heic", ".heif", ".avif", ".ico",
 })
 
 
@@ -56,6 +67,7 @@ class ImageHashResult:
     hash_value: imagehash.ImageHash
     algorithm: HashAlgorithm
     file_size: int  # bytes
+    file_mtime: float = 0.0  # modification time
 
     def distance(self, other: ImageHashResult) -> int:
         """Hamming distance between two hashes (0 = identical)."""
@@ -86,19 +98,25 @@ class MatchResult:
         )
 
 
-def _human_size(size_bytes: int) -> str:
+def _human_size(size_bytes: int | float) -> str:
     """Convert bytes to human-readable format."""
+    value: float = float(size_bytes)
     for unit in ("B", "KB", "MB", "GB"):
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
+        if value < 1024:
+            if unit == "B":
+                return f"{int(value)} B"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
 
 
 def compute_hash(
     image_path: Path,
     algorithm: HashAlgorithm = HashAlgorithm.PERCEPTUAL,
     hash_size: int = 16,
+    *,
+    file_size: Optional[int] = None,
+    file_mtime: Optional[float] = None,
 ) -> Optional[ImageHashResult]:
     """
     Compute the perceptual hash of an image.
@@ -107,6 +125,8 @@ def compute_hash(
         image_path: Path to the image file.
         algorithm: Hashing algorithm to use.
         hash_size: Hash size (larger = more precise, slower).
+        file_size: Pre-fetched file size (avoids extra stat call).
+        file_mtime: Pre-fetched modification time (avoids extra stat call).
 
     Returns:
         ImageHashResult or None if the image cannot be processed.
@@ -115,11 +135,16 @@ def compute_hash(
         img = _load_image(image_path)
         hash_fn = _HASH_FUNCTIONS[algorithm]
         h = hash_fn(img, hash_size=hash_size)
+        if file_size is None or file_mtime is None:
+            st = image_path.stat()
+            file_size = file_size if file_size is not None else st.st_size
+            file_mtime = file_mtime if file_mtime is not None else st.st_mtime
         return ImageHashResult(
             path=image_path,
             hash_value=h,
             algorithm=algorithm,
-            file_size=image_path.stat().st_size,
+            file_size=file_size,
+            file_mtime=file_mtime,
         )
     except Exception:
         return None
@@ -146,12 +171,19 @@ def _load_image(image_path: Path) -> Image.Image:
     """Load image using libvips if available, otherwise PIL."""
     if pyvips is not None:
         vimg = pyvips.Image.new_from_file(str(image_path), access="sequential")
-        if vimg.bands > 3:
-            vimg = vimg[:3]
+        # Normalize to 3-band sRGB regardless of source bands
         if vimg.bands == 1:
             vimg = vimg.colourspace("srgb")
+        elif vimg.bands == 2:
+            # Grayscale + alpha → drop alpha, convert to sRGB
+            vimg = vimg[0].colourspace("srgb")
+        elif vimg.bands > 3:
+            # RGBA or CMYK+alpha → keep only first 3 bands
+            vimg = vimg[:3]
         mem = vimg.write_to_memory()
-        arr = np.frombuffer(mem, dtype=np.uint8).reshape(vimg.height, vimg.width, vimg.bands)
+        arr = np.frombuffer(mem, dtype=np.uint8).reshape(
+            vimg.height, vimg.width, vimg.bands,
+        )
         return Image.fromarray(arr, mode="RGB")
 
     with Image.open(image_path) as img:

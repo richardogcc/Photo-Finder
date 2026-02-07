@@ -3,16 +3,21 @@ Parallel search engine for similar images.
 
 Uses multiprocessing to hash images in parallel and
 finds matches based on a configurable similarity threshold.
+
+Note: on Windows (spawn start-method) the module-level worker function
+must be importable from the top level.  This works on macOS/Linux (fork)
+out of the box, but Windows users should invoke the tool via
+``python -m photo_finder`` so that ``if __name__`` guards are respected.
 """
 
 from __future__ import annotations
 
 import multiprocessing as mp
+import signal
 import sys
 import time
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 from pathlib import Path
 from typing import Optional
 
@@ -25,14 +30,22 @@ from .hasher import (
 )
 from .cache import HashCache
 
+__all__ = ["SearchConfig", "SearchStats", "search"]
+
 
 def _compute_hash_worker(
-    image_path: Path,
-    algorithm: HashAlgorithm,
-    hash_size: int,
+    args: tuple[Path, int, float, HashAlgorithm, int],
 ) -> Optional[ImageHashResult]:
-    """Multiprocessing worker – computes hash of an image."""
-    return compute_hash(image_path, algorithm, hash_size)
+    """Multiprocessing worker – computes hash of an image.
+
+    Receives a single tuple so that ``pool.imap_unordered`` can pass
+    all per-file metadata without needing ``functools.partial``.
+    """
+    image_path, file_size, file_mtime, algorithm, hash_size = args
+    return compute_hash(
+        image_path, algorithm, hash_size,
+        file_size=file_size, file_mtime=file_mtime,
+    )
 
 
 @dataclass
@@ -97,7 +110,7 @@ def _print_progress(current: int, total: int, prefix: str = ""):
         sys.stdout.write("\n")
 
 
-def _chunked(items: list[Path], size: int) -> list[list[Path]]:
+def _chunked(items: list, size: int) -> list[list]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
 
@@ -129,6 +142,12 @@ def search(
     if config is None:
         config = SearchConfig()
 
+    verbose = config.show_progress  # gate ALL console output (#16)
+
+    def _log(msg: str) -> None:
+        if verbose:
+            print(msg)
+
     # Validation
     if not reference_image.exists():
         raise FileNotFoundError(f"Reference image not found: {reference_image}")
@@ -137,16 +156,17 @@ def search(
 
     stats = SearchStats()
     t_start = time.monotonic()
+    reference_image = reference_image.resolve()  # normalize (#8)
 
     # 1. Compute reference image hash
-    print(f"\n🔍 Computing reference hash: {reference_image.name}")
+    _log(f"\n🔍 Computing reference hash: {reference_image.name}")
     ref_hash = compute_hash(reference_image, config.algorithm, config.hash_size)
     if ref_hash is None:
         raise ValueError(f"Could not process reference image: {reference_image}")
-    print(f"   Algorithm: {config.algorithm} | Hash: {ref_hash.hash_value}")
+    _log(f"   Algorithm: {config.algorithm} | Hash: {ref_hash.hash_value}")
 
     # 2. Collect all images from directory (with optional directory index)
-    print(f"\n📂 Scanning directory: {search_directory}")
+    _log(f"\n📂 Scanning directory: {search_directory}")
     cache: Optional[HashCache] = None
     if config.use_cache:
         default_db = Path(__file__).resolve().parent.parent / ".photo_finder_cache.sqlite3"
@@ -166,34 +186,42 @@ def search(
         if cache and config.use_dir_index:
             cache.replace_index(search_directory, candidates)
 
-    # Exclude reference image early
-    candidates = [p for p in candidates if p.resolve() != reference_image.resolve()]
+    # Normalize all candidate paths and exclude reference image (#8)
+    candidates = [
+        p.resolve() for p in candidates
+        if p.resolve() != reference_image
+    ]
     stats.total_files = len(candidates)
-    print(f"   {stats.total_files} images found")
+    _log(f"   {stats.total_files} images found")
 
     if stats.total_files == 0:
         stats.elapsed_seconds = time.monotonic() - t_start
+        if cache:
+            cache.close()
         return [], stats
 
     # 3. Collect file stats asynchronously (I/O bound)
-    print(f"\n⚙️  Processing with {config.max_workers} workers...\n")
+    _log(f"\n⚙️  Processing with {config.max_workers} workers...\n")
     stats_map: dict[Path, tuple[int, float]] = {}
     if candidates:
         with ThreadPoolExecutor(max_workers=config.io_workers) as executor:
             for path, size, mtime in executor.map(_stat_path, candidates):
                 stats_map[path] = (size, mtime)
 
-    # 5. Optional size pre-filter (based on reference file size)
+    # 4. Optional size pre-filter (based on reference file size)
     ref_size = reference_image.stat().st_size
     if config.size_tolerance_pct is not None:
         tol = max(0.0, config.size_tolerance_pct) / 100.0
         min_size = int(ref_size * (1.0 - tol))
         max_size = int(ref_size * (1.0 + tol))
-        candidates = [p for p in candidates if min_size <= stats_map.get(p, (0, 0))[0] <= max_size]
+        candidates = [
+            p for p in candidates
+            if min_size <= stats_map.get(p, (0, 0))[0] <= max_size
+        ]
         stats.total_files = len(candidates)
-        print(f"   Size filter: {min_size}–{max_size} bytes | {len(candidates)} candidates")
+        _log(f"   Size filter: {min_size}–{max_size} bytes | {len(candidates)} candidates")
 
-    # 6. Resolve cached hashes
+    # 5. Resolve cached hashes
     cached_results: dict[Path, ImageHashResult] = {}
     missing: list[Path] = candidates
     if cache and candidates:
@@ -211,34 +239,51 @@ def search(
             else:
                 missing.append(path)
 
-    # 7. Compute missing hashes in parallel (batching)
-    worker_fn = partial(
-        _compute_hash_worker,
-        algorithm=config.algorithm,
-        hash_size=config.hash_size,
-    )
+    # 6. Compute missing hashes in parallel (batching)
+    # Build worker args tuples: (path, size, mtime, algorithm, hash_size)
+    worker_args = [
+        (
+            p,
+            stats_map.get(p, (0, 0.0))[0],
+            stats_map.get(p, (0, 0.0))[1],
+            config.algorithm,
+            config.hash_size,
+        )
+        for p in missing
+    ]
 
     results: list[Optional[ImageHashResult]] = []
-    total_to_hash = len(missing)
+    total_to_hash = len(worker_args)
     if total_to_hash > 0:
-        with mp.Pool(processes=config.max_workers) as pool:
-            processed = 0
-            for chunk in _chunked(missing, config.batch_size):
-                chunk_results: list[ImageHashResult] = []
-                for result in pool.imap_unordered(worker_fn, chunk):
-                    results.append(result)
-                    if result is not None:
-                        chunk_results.append(result)
-                    processed += 1
-                    if config.show_progress:
-                        _print_progress(processed, total_to_hash, "   Hashing")
-                if cache and chunk_results:
-                    cache.upsert_many(chunk_results)
+        # Ignore SIGINT in workers so the parent can handle Ctrl+C (#14)
+        original_sigint = signal.getsignal(signal.SIGINT)
+        try:
+            with mp.Pool(
+                processes=config.max_workers,
+                initializer=signal.signal,
+                initargs=(signal.SIGINT, signal.SIG_IGN),
+            ) as pool:
+                processed = 0
+                for chunk in _chunked(worker_args, config.batch_size):
+                    chunk_results: list[ImageHashResult] = []
+                    for result in pool.imap_unordered(_compute_hash_worker, chunk):
+                        results.append(result)
+                        if result is not None:
+                            chunk_results.append(result)
+                        processed += 1
+                        if config.show_progress:
+                            _print_progress(processed, total_to_hash, "   Hashing")
+                    if cache and chunk_results:
+                        cache.upsert_many(chunk_results, hash_size=config.hash_size)
+        except KeyboardInterrupt:
+            _log("\n\n⚠️  Interrupted – partial results will be returned.")
+        finally:
+            signal.signal(signal.SIGINT, original_sigint)
 
     # Merge cached results
     results.extend(cached_results.values())
 
-    # 8. Filter by similarity threshold
+    # 7. Filter by similarity threshold
     matches: list[MatchResult] = []
     for res in results:
         if res is None:

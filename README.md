@@ -21,16 +21,27 @@ that are:
 # Clone or download the project
 cd "Photo Finder"
 
-# Install system dependency (macOS)
-brew install libvips
-
 # Create a virtual environment (recommended)
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
+# Install as a package (recommended)
+pip install .
+
+# Or install from requirements
 pip install -r requirements.txt
+
+# Optional: faster image decoding via libvips
+brew install libvips          # macOS
+pip install pyvips            # or: pip install ".[fast]"
 ```
+
+> **Windows note:** Photo Finder uses `multiprocessing` with the *fork*
+> start-method (default on macOS/Linux). On Windows the *spawn* method is
+> used instead, which requires invoking the tool via
+> `python -m photo_finder` so that the `if __name__` guard is respected.
+> Core functionality works, but performance and edge-case behavior may
+> differ.
 
 ## Usage
 
@@ -156,7 +167,7 @@ You can also create a config file (`.photo_finder.json`) in your working directo
 
 ## Supported formats
 
-JPG/JPEG, PNG, BMP, GIF, TIFF, WebP, HEIC, HEIF, AVIF, ICO, SVG
+JPG/JPEG, PNG, BMP, GIF, TIFF, WebP, HEIC, HEIF, AVIF, ICO
 
 ## Architecture
 
@@ -164,15 +175,17 @@ JPG/JPEG, PNG, BMP, GIF, TIFF, WebP, HEIC, HEIF, AVIF, ICO, SVG
 photo_finder/
 ├── __init__.py     # Package metadata
 ├── __main__.py     # CLI (entry point)
+├── cache.py        # SQLite hash & directory index cache
+├── engine.py       # Parallel search engine
 ├── hasher.py       # Perceptual hashing and image utilities
-└── engine.py       # Parallel search engine
+└── py.typed        # PEP 561 marker for type checkers
 ```
 
 ## Tests + benchmarks
 
 ```bash
-# Install dev dependencies
-pip install -r requirements-dev.txt
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
 
 # Run tests
 pytest

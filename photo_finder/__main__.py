@@ -74,7 +74,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-size-filter",
         action="store_true",
-        default=None,
         help="Disable size prefilter.",
     )
     parser.add_argument(
@@ -115,31 +114,26 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        default=None,
         help="Disable SQLite hash cache.",
     )
     parser.add_argument(
         "--no-dir-index",
         action="store_true",
-        default=None,
         help="Disable directory index cache.",
     )
     parser.add_argument(
         "--refresh-dir-index",
         action="store_true",
-        default=None,
         help="Rebuild directory index cache.",
     )
     parser.add_argument(
         "--no-progress",
         action="store_true",
-        default=None,
         help="Disable progress bar.",
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        default=None,
         help="Output results as JSON.",
     )
     parser.add_argument(
@@ -259,21 +253,21 @@ def main(argv: list[str] | None = None) -> int:
         merged["io_workers"] = args.io_workers
     if args.cache_db is not None:
         merged["cache_db_path"] = args.cache_db
-    if args.no_cache is True:
+    if args.no_cache:
         merged["use_cache"] = False
-    if args.no_dir_index is True:
+    if args.no_dir_index:
         merged["use_dir_index"] = False
-    if args.refresh_dir_index is True:
+    if args.refresh_dir_index:
         merged["refresh_dir_index"] = True
-    if args.no_size_filter is True:
+    if args.no_size_filter:
         merged["size_tolerance_pct"] = None
     elif args.size_tolerance is not None:
         merged["size_tolerance_pct"] = args.size_tolerance
-    if args.no_progress is True:
+    if args.no_progress:
         merged["show_progress"] = False
 
     output_json = bool(config_data.get("json", False))
-    if args.json is True:
+    if args.json:
         output_json = True
 
     config = SearchConfig(
@@ -297,6 +291,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         matches, stats = search(args.image, args.directory, config)
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Search interrupted by user.", file=sys.stderr)
+        return 130
     except (FileNotFoundError, ValueError) as e:
         print(f"\n❌ Error: {e}", file=sys.stderr)
         return 1

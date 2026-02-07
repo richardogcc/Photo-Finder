@@ -1,0 +1,2 @@
+# Optional: faster image decoding via libvips
+pyvips>=2.2.2

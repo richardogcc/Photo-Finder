@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photo-finder"
+version = "1.0.0"
+description = "Find duplicate or similar images using perceptual hashing."
+readme = "README.md"
+license = "GPL-3.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "richardogcc" },
+]
+keywords = ["image", "duplicate", "perceptual-hash", "photo", "similarity"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "Pillow>=10.0.0",
+    "imagehash>=4.3.0",
+]
+
+[project.optional-dependencies]
+fast = ["pyvips>=2.2.2"]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+photo-finder = "photo_finder.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/richardogcc/Photo-Finder"
+
+[tool.setuptools.packages.find]
+include = ["photo_finder*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
