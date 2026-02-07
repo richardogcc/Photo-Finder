@@ -200,10 +200,13 @@ def search(
             cache.replace_index(search_directory, candidates)
 
     # Normalize all candidate paths and exclude reference image (#8)
+    pre_exclude_count = len(candidates)
     candidates = [
         resolved for p in candidates
         if (resolved := p.resolve()) != reference_image
     ]
+    if len(candidates) < pre_exclude_count:
+        _log("   ℹ️  Reference image found inside search directory (excluded from comparison)")
     stats.total_files = len(candidates)
     _log(f"   {stats.total_files} images found")
 
