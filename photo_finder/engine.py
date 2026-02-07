@@ -16,7 +16,7 @@ import multiprocessing as mp
 import signal
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
@@ -188,8 +188,8 @@ def search(
 
     # Normalize all candidate paths and exclude reference image (#8)
     candidates = [
-        p.resolve() for p in candidates
-        if p.resolve() != reference_image
+        resolved for p in candidates
+        if (resolved := p.resolve()) != reference_image
     ]
     stats.total_files = len(candidates)
     _log(f"   {stats.total_files} images found")
