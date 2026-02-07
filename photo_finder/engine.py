@@ -57,6 +57,7 @@ class SearchConfig:
     max_workers: int = 0          # 0 = auto (number of CPUs)
     show_progress: bool = True
     use_cache: bool = True
+    write_cache: bool = True
     cache_db_path: Optional[Path] = None
     size_tolerance_pct: Optional[float] = 50.0  # percent; None to disable
     batch_size: int = 500
@@ -168,22 +169,23 @@ def search(
     # 2. Collect all images from directory (with optional directory index)
     _log(f"\n📂 Scanning directory: {search_directory}")
     cache: Optional[HashCache] = None
-    if config.use_cache:
+    if config.use_cache or config.write_cache:
         default_db = Path(__file__).resolve().parent.parent / ".photo_finder_cache.sqlite3"
         db_path = config.cache_db_path or default_db
         cache = HashCache(db_path)
 
     candidates: list[Path]
-    if cache and config.use_dir_index and not config.refresh_dir_index:
+    if cache and config.use_cache and config.use_dir_index and not config.refresh_dir_index:
         cached_index = cache.get_index(search_directory)
         if cached_index is not None:
             candidates = cached_index
         else:
             candidates = collect_image_paths(search_directory)
-            cache.replace_index(search_directory, candidates)
+            if config.write_cache:
+                cache.replace_index(search_directory, candidates)
     else:
         candidates = collect_image_paths(search_directory)
-        if cache and config.use_dir_index:
+        if cache and config.write_cache and config.use_dir_index:
             cache.replace_index(search_directory, candidates)
 
     # Normalize all candidate paths and exclude reference image (#8)
@@ -224,7 +226,7 @@ def search(
     # 5. Resolve cached hashes
     cached_results: dict[Path, ImageHashResult] = {}
     missing: list[Path] = candidates
-    if cache and candidates:
+    if cache and config.use_cache and candidates:
         cached = cache.get_cached(candidates, config.algorithm, config.hash_size)
         cached_results = {}
         missing = []
@@ -273,7 +275,7 @@ def search(
                         processed += 1
                         if config.show_progress:
                             _print_progress(processed, total_to_hash, "   Hashing")
-                    if cache and chunk_results:
+                    if cache and config.write_cache and chunk_results:
                         cache.upsert_many(chunk_results, hash_size=config.hash_size)
         except KeyboardInterrupt:
             _log("\n\n⚠️  Interrupted – partial results will be returned.")

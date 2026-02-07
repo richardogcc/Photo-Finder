@@ -5,6 +5,7 @@
   "hash_size": 16,
   "max_workers": 0,
   "use_cache": true,
+  "write_cache": true,
   "cache_db_path": null,
   "use_dir_index": true,
   "refresh_dir_index": false,

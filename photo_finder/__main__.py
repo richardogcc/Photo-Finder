@@ -174,18 +174,21 @@ def _apply_preset(name: str | None) -> dict[str, Any]:
     if key == "no-shortcuts":
         return {
             "use_cache": False,
+            "write_cache": True,
             "use_dir_index": False,
             "size_tolerance_pct": None,
         }
     if key == "thorough":
         return {
             "use_cache": True,
+            "write_cache": True,
             "use_dir_index": True,
             "size_tolerance_pct": None,
         }
     # medium (default-like)
     return {
         "use_cache": True,
+        "write_cache": True,
         "use_dir_index": True,
         "size_tolerance_pct": 50.0,
     }
@@ -204,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         "max_workers": defaults.max_workers,
         "show_progress": defaults.show_progress,
         "use_cache": defaults.use_cache,
+        "write_cache": defaults.write_cache,
         "cache_db_path": defaults.cache_db_path,
         "size_tolerance_pct": defaults.size_tolerance_pct,
         "batch_size": defaults.batch_size,
@@ -227,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         "max_workers",
         "show_progress",
         "use_cache",
+        "write_cache",
         "size_tolerance_pct",
         "batch_size",
         "io_workers",
@@ -255,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
         merged["cache_db_path"] = args.cache_db
     if args.no_cache:
         merged["use_cache"] = False
+        merged["write_cache"] = False
     if args.no_dir_index:
         merged["use_dir_index"] = False
     if args.refresh_dir_index:
@@ -277,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         max_workers=merged["max_workers"],
         show_progress=merged["show_progress"],
         use_cache=merged["use_cache"],
+        write_cache=merged["write_cache"],
         cache_db_path=merged["cache_db_path"],
         size_tolerance_pct=merged["size_tolerance_pct"],
         batch_size=merged["batch_size"],

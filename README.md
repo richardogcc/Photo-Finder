@@ -69,7 +69,7 @@ python -m photo_finder photo.jpg ~/Pictures -a perceptual -t 85 -w 8
 | `-w`, `--workers` | Number of parallel processes (0 = auto) | `0` (auto) |
 | `--io-workers` | Number of I/O worker threads | `16` |
 | `--cache-db` | Path to SQLite cache DB | `.photo_finder_cache.sqlite3` |
-| `--no-cache` | Disable SQLite hash cache | `false` |
+| `--no-cache` | Disable reading **and writing** SQLite hash cache | `false` |
 | `--no-dir-index` | Disable directory index cache | `false` |
 | `--refresh-dir-index` | Rebuild directory index cache | `false` |
 | `--no-progress` | Disable progress bar | `false` |
@@ -104,7 +104,7 @@ reference image file size).
 
 You can use presets to avoid long CLI commands:
 
-- `no-shortcuts`: no cache, no directory index, no size prefilter
+- `no-shortcuts`: skips reading cache & directory index (forces full rescan), but still **writes** results to cache for future runs
 - `medium`: defaults
 - `thorough`: cache + directory index, no size prefilter
 
@@ -118,6 +118,7 @@ You can also create a config file (`.photo_finder.json`) in your working directo
    "hash_size": 16,
    "max_workers": 0,
    "use_cache": true,
+   "write_cache": true,
    "use_dir_index": true,
    "size_tolerance_pct": 50,
    "batch_size": 500,
