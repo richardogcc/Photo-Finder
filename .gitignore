@@ -30,6 +30,9 @@ test_real/
 
 # Cache
 .photo_finder_cache.sqlite3
+.photo_finder_cache.sqlite3-wal
+.photo_finder_cache.sqlite3-shm
+.photo_finder_cache.sqlite3-journal
 
 # Tests
 .pytest_cache/
