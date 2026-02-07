@@ -57,8 +57,41 @@ class HashCache:
             """
         )
         self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS directory_index (
+                root TEXT NOT NULL,
+                path TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                mtime REAL NOT NULL,
+                PRIMARY KEY (root, path)
+            )
+            """
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_directory_index_root ON directory_index(root)"
+        )
+        self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_image_hashes_path ON image_hashes(path)"
         )
+        self._conn.commit()
+
+    def get_index(self, root: Path) -> Optional[list[Path]]:
+        rows = self._conn.execute(
+            "SELECT path FROM directory_index WHERE root = ?",
+            (str(root),),
+        ).fetchall()
+        if not rows:
+            return None
+        return [Path(r[0]) for r in rows]
+
+    def replace_index(self, root: Path, paths: Iterable[Path]) -> None:
+        self._conn.execute("DELETE FROM directory_index WHERE root = ?", (str(root),))
+        data = [(str(root), str(p), p.stat().st_size, p.stat().st_mtime) for p in paths]
+        if data:
+            self._conn.executemany(
+                "INSERT INTO directory_index (root, path, size, mtime) VALUES (?, ?, ?, ?)",
+                data,
+            )
         self._conn.commit()
 
     def get_cached(

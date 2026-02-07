@@ -116,6 +116,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable SQLite hash cache.",
     )
     parser.add_argument(
+        "--no-dir-index",
+        action="store_true",
+        help="Disable directory index cache.",
+    )
+    parser.add_argument(
+        "--refresh-dir-index",
+        action="store_true",
+        help="Rebuild directory index cache.",
+    )
+    parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable progress bar.",
@@ -145,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         size_tolerance_pct=None if args.no_size_filter else args.size_tolerance,
         batch_size=args.batch_size,
         io_workers=args.io_workers,
+        use_dir_index=not args.no_dir_index,
+        refresh_dir_index=args.refresh_dir_index,
     )
 
     print("╔══════════════════════════════════════════════════════════╗")

@@ -59,6 +59,8 @@ python -m photo_finder photo.jpg ~/Pictures -a perceptual -t 85 -w 8
 | `--io-workers` | Number of I/O worker threads | `16` |
 | `--cache-db` | Path to SQLite cache DB | `.photo_finder_cache.sqlite3` |
 | `--no-cache` | Disable SQLite hash cache | `false` |
+| `--no-dir-index` | Disable directory index cache | `false` |
+| `--refresh-dir-index` | Rebuild directory index cache | `false` |
 | `--no-progress` | Disable progress bar | `false` |
 | `--json` | Output results as JSON | `false` |
 
@@ -77,6 +79,9 @@ By default, Photo Finder stores hashes in a **SQLite cache** at the project
 root (`.photo_finder_cache.sqlite3`) so repeated scans are much faster. The
 cache is automatically invalidated when the file size or modification time
 changes.
+
+It also maintains a **directory index** (list of image files). If you want to
+force a rescan, use `--refresh-dir-index`, or disable it with `--no-dir-index`.
 
 You can also enable a **size prefilter** to reduce the number of files that need
 hashing. This is controlled by `--size-tolerance` (percentage around the

@@ -48,6 +48,8 @@ class SearchConfig:
     size_tolerance_pct: Optional[float] = 50.0  # percent; None to disable
     batch_size: int = 500
     io_workers: int = 16
+    use_dir_index: bool = True
+    refresh_dir_index: bool = False
 
     def __post_init__(self):
         if self.max_workers <= 0:
@@ -143,9 +145,27 @@ def search(
         raise ValueError(f"Could not process reference image: {reference_image}")
     print(f"   Algorithm: {config.algorithm} | Hash: {ref_hash.hash_value}")
 
-    # 2. Collect all images from directory
+    # 2. Collect all images from directory (with optional directory index)
     print(f"\n📂 Scanning directory: {search_directory}")
-    candidates = collect_image_paths(search_directory)
+    cache: Optional[HashCache] = None
+    if config.use_cache:
+        default_db = Path(__file__).resolve().parent.parent / ".photo_finder_cache.sqlite3"
+        db_path = config.cache_db_path or default_db
+        cache = HashCache(db_path)
+
+    candidates: list[Path]
+    if cache and config.use_dir_index and not config.refresh_dir_index:
+        cached_index = cache.get_index(search_directory)
+        if cached_index is not None:
+            candidates = cached_index
+        else:
+            candidates = collect_image_paths(search_directory)
+            cache.replace_index(search_directory, candidates)
+    else:
+        candidates = collect_image_paths(search_directory)
+        if cache and config.use_dir_index:
+            cache.replace_index(search_directory, candidates)
+
     # Exclude reference image early
     candidates = [p for p in candidates if p.resolve() != reference_image.resolve()]
     stats.total_files = len(candidates)
@@ -155,14 +175,7 @@ def search(
         stats.elapsed_seconds = time.monotonic() - t_start
         return [], stats
 
-    # 3. Prepare cache
-    cache: Optional[HashCache] = None
-    if config.use_cache:
-        default_db = Path(__file__).resolve().parent.parent / ".photo_finder_cache.sqlite3"
-        db_path = config.cache_db_path or default_db
-        cache = HashCache(db_path)
-
-    # 4. Collect file stats asynchronously (I/O bound)
+    # 3. Collect file stats asynchronously (I/O bound)
     print(f"\n⚙️  Processing with {config.max_workers} workers...\n")
     stats_map: dict[Path, tuple[int, float]] = {}
     if candidates:
