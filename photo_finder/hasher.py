@@ -17,6 +17,13 @@ import imagehash
 import numpy as np
 from PIL import Image
 
+# Disable PIL's decompression-bomb guard.  Photo Finder is a *local* CLI
+# tool that intentionally processes user-owned images of arbitrary size
+# (e.g. high-res panoramas, Nikon Z5 ~96 MP stitches).  The default
+# limit of ~89 MP would reject legitimate images and pollute output with
+# warnings.
+Image.MAX_IMAGE_PIXELS = None
+
 try:
     import pyvips  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
