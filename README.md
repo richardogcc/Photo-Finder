@@ -63,6 +63,8 @@ python -m photo_finder photo.jpg ~/Pictures -a perceptual -t 85 -w 8
 | `--refresh-dir-index` | Rebuild directory index cache | `false` |
 | `--no-progress` | Disable progress bar | `false` |
 | `--json` | Output results as JSON | `false` |
+| `--preset` | Preset: `no-shortcuts`, `medium`, `thorough` | — |
+| `--config` | Path to JSON config file | `.photo_finder.json` |
 
 ### Available algorithms
 
@@ -86,6 +88,31 @@ force a rescan, use `--refresh-dir-index`, or disable it with `--no-dir-index`.
 You can also enable a **size prefilter** to reduce the number of files that need
 hashing. This is controlled by `--size-tolerance` (percentage around the
 reference image file size).
+
+## Presets & config file
+
+You can use presets to avoid long CLI commands:
+
+- `no-shortcuts`: no cache, no directory index, no size prefilter
+- `medium`: defaults
+- `thorough`: cache + directory index, no size prefilter
+
+You can also create a config file (`.photo_finder.json`) in your working directory:
+
+```json
+{
+   "preset": "medium",
+   "algorithm": "perceptual",
+   "threshold": 90,
+   "hash_size": 16,
+   "max_workers": 0,
+   "use_cache": true,
+   "use_dir_index": true,
+   "size_tolerance_pct": 50,
+   "batch_size": 500,
+   "io_workers": 16
+}
+```
 
 ## Example output
 

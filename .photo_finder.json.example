@@ -1,0 +1,15 @@
+{
+  "preset": "medium",
+  "algorithm": "perceptual",
+  "threshold": 90,
+  "hash_size": 16,
+  "max_workers": 0,
+  "use_cache": true,
+  "cache_db_path": null,
+  "use_dir_index": true,
+  "refresh_dir_index": false,
+  "size_tolerance_pct": 50,
+  "batch_size": 500,
+  "io_workers": 16,
+  "show_progress": true
+}

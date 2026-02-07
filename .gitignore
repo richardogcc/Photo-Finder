@@ -34,5 +34,8 @@ test_real/
 .photo_finder_cache.sqlite3-shm
 .photo_finder_cache.sqlite3-journal
 
+# Local config
+.photo_finder.json
+
 # Tests
 .pytest_cache/
